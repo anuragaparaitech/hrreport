@@ -14,11 +14,30 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
+const mongoUri = process.env.MONGO_URI || 'mongodb://mailblast:Aparaitech2129@ac-rl6rdwo-shard-00-00.kmi9oku.mongodb.net:27017,ac-rl6rdwo-shard-00-01.kmi9oku.mongodb.net:27017,ac-rl6rdwo-shard-00-02.kmi9oku.mongodb.net:27017/?ssl=true&replicaSet=atlas-3ebffw-shard-0&authSource=admin&appName=Cluster0';
+
+let isDbConnected = false;
+async function connectDB() {
+  if (isDbConnected && mongoose.connection.readyState === 1) return;
+  try {
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
+    isDbConnected = true;
+    console.log('Connected to MongoDB Atlas');
+  } catch (err) {
+    console.error('MongoDB connection error:', err.message);
+  }
+}
+
+app.use(async (req, res, next) => {
+  await connectDB();
+  next();
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const uploadsDir = path.join(__dirname, 'uploads', 'meeting-proofs');
-fs.mkdirSync(uploadsDir, { recursive: true });
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const uploadsDir = process.env.VERCEL ? path.join('/tmp', 'uploads', 'meeting-proofs') : path.join(__dirname, 'uploads', 'meeting-proofs');
+try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch(err) { console.warn('Upload directory warning:', err.message); }
+app.use('/uploads', express.static(uploadsDir));
 
 const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, uploadsDir),
@@ -150,24 +169,6 @@ app.get('/api/reports/daily', async (req,res)=>{
 });
 
 const port = process.env.PORT || 5000;
-const mongoUri = process.env.MONGO_URI || 'mongodb://mailblast:Aparaitech2129@ac-rl6rdwo-shard-00-00.kmi9oku.mongodb.net:27017,ac-rl6rdwo-shard-00-01.kmi9oku.mongodb.net:27017,ac-rl6rdwo-shard-00-02.kmi9oku.mongodb.net:27017/?ssl=true&replicaSet=atlas-3ebffw-shard-0&authSource=admin&appName=Cluster0';
-
-let isDbConnected = false;
-async function connectDB() {
-  if (isDbConnected && mongoose.connection.readyState === 1) return;
-  try {
-    await mongoose.connect(mongoUri);
-    isDbConnected = true;
-    console.log('Connected to MongoDB Atlas');
-  } catch (err) {
-    console.error('MongoDB connection error:', err.message);
-  }
-}
-
-app.use(async (req, res, next) => {
-  await connectDB();
-  next();
-});
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   connectDB().then(() => {
