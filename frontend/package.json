@@ -1,0 +1,5 @@
+{
+  "name":"hr-interview-crm-frontend","version":"1.0.0","private":true,"scripts":{"dev":"vite --host 0.0.0.0","build":"vite build"},
+  "dependencies":{"@vitejs/plugin-react":"latest","vite":"latest","react":"latest","react-dom":"latest","lucide-react":"latest"},
+  "devDependencies":{}
+}
