@@ -102,6 +102,7 @@ function App() {
   const [form, setForm] = useState(emptyInterview);
   const [search, setSearch] = useState('');
   const [selectedCandidateForDocs, setSelectedCandidateForDocs] = useState(null);
+  const [editingInterview, setEditingInterview] = useState(null);
 
   const handleLogin = (loggedUser, authToken) => {
     setUser(loggedUser);
@@ -170,6 +171,15 @@ function App() {
       await fetch(API + '/interviews/' + id, { method: 'DELETE' });
       load();
     }
+  };
+
+  const openEditInterview = (interview) => {
+    setEditingInterview({
+      ...interview,
+      interviewDate: interview.interviewDate ? new Date(interview.interviewDate).toISOString().split('T')[0] : '',
+      joiningDate: interview.joiningDate ? new Date(interview.joiningDate).toISOString().split('T')[0] : '',
+      followUpDate: interview.followUpDate ? new Date(interview.followUpDate).toISOString().split('T')[0] : ''
+    });
   };
 
   if (!user) {
@@ -254,9 +264,14 @@ function App() {
                       <b>{x.candidateName}</b>
                       <small>{x.role} • {new Date(x.interviewDate).toLocaleDateString()} {x.interviewTime}</small>
                     </div>
-                    {x.googleMeetLink ? (
-                      <a href={x.googleMeetLink} target="_blank" rel="noreferrer"><Link2 size={16} /> Meet</a>
-                    ) : <span className="muted">No link</span>}
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button className="actionBtn" onClick={() => openEditInterview(x)} title="Edit Candidate">
+                        <Edit size={14} />
+                      </button>
+                      {x.googleMeetLink ? (
+                        <a href={x.googleMeetLink} target="_blank" rel="noreferrer"><Link2 size={16} /> Meet</a>
+                      ) : <span className="muted">No link</span>}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -293,7 +308,7 @@ function App() {
                     <th>Joining</th>
                     <th>Meeting Proof</th>
                     <th>Docs</th>
-                    <th>Action</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -321,7 +336,14 @@ function App() {
                         </button>
                       </td>
                       <td>
-                        <button className="icon danger" onClick={() => del(x._id)}><Trash2 size={16} /></button>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button className="actionBtn" onClick={() => openEditInterview(x)} title="Edit Interview">
+                            <Edit size={14} /> Edit
+                          </button>
+                          <button className="icon danger" onClick={() => del(x._id)} title="Delete Interview">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -331,7 +353,7 @@ function App() {
           </div>
         )}
 
-        {tab === 'joiners' && <JoinerPanel items={items} onManageDocs={setSelectedCandidateForDocs} />}
+        {tab === 'joiners' && <JoinerPanel items={items} onManageDocs={setSelectedCandidateForDocs} onEditInterview={openEditInterview} />}
 
         {tab === 'new' && (
           <form className="panel form" onSubmit={addInterview}>
@@ -387,6 +409,10 @@ function App() {
 
         {selectedCandidateForDocs && (
           <DocumentModal candidate={selectedCandidateForDocs} onClose={() => setSelectedCandidateForDocs(null)} reload={load} />
+        )}
+
+        {editingInterview && (
+          <EditInterviewModal interview={editingInterview} onClose={() => setEditingInterview(null)} reload={load} />
         )}
       </main>
     </div>
@@ -450,6 +476,93 @@ function MeetingProof({ interview, reload }) {
           {interview.proofUploadedAt && <small>Last proof: {new Date(interview.proofUploadedAt).toLocaleString()}</small>}
         </div>
       )}
+    </div>
+  );
+}
+
+function EditInterviewModal({ interview, onClose, reload }) {
+  const [f, setF] = useState({ ...interview });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/interviews/${interview._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(f)
+      });
+      if (!res.ok) throw new Error('Failed to update interview');
+      await reload();
+      onClose();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modalOverlay">
+      <div className="modal">
+        <div className="modalHeader">
+          <h3>Edit Interview & Candidate Details</h3>
+          <button className="closeBtn" onClick={onClose}><X size={20} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="form">
+          <div className="formgrid">
+            {[
+              ['candidateName', 'Candidate Name', 'text'],
+              ['phone', 'Phone Number', 'text'],
+              ['email', 'Email Address', 'email'],
+              ['college', 'College / Institute', 'text'],
+              ['interviewDate', 'Interview Date', 'date'],
+              ['interviewTime', 'Interview Time', 'time'],
+              ['googleMeetLink', 'Google Meet Link', 'url'],
+              ['interviewer', 'Interviewer Name', 'text'],
+              ['round', 'Interview Round', 'text'],
+              ['joiningDate', 'Joining Date', 'date'],
+              ['salaryOrStipend', 'Salary / Stipend', 'text'],
+              ['followUpDate', 'Follow-up Date', 'date']
+            ].map(([k, l, t]) => (
+              <label key={k}>
+                {l}
+                <input
+                  type={t}
+                  value={f[k] || ''}
+                  required={k === 'candidateName'}
+                  onChange={e => setF({ ...f, [k]: e.target.value })}
+                />
+              </label>
+            ))}
+            <label>Role / Position
+              <select value={f.role || 'Software Developer'} onChange={e => setF({ ...f, role: e.target.value })}>
+                {['BDA', 'Software Developer', 'Java Developer', 'Python Developer', 'React Developer', 'Node.js Developer', 'HR', 'Other'].map(v => <option key={v}>{v}</option>)}
+              </select>
+            </label>
+            <label>Interview Status
+              <select value={f.status || 'Scheduled'} onChange={e => setF({ ...f, status: e.target.value })}>
+                {['Scheduled', 'Completed', 'Selected', 'Rejected', 'No Show', 'On Hold', 'Pending'].map(v => <option key={v}>{v}</option>)}
+              </select>
+            </label>
+            <label>Joining Status
+              <select value={f.joiningStatus || 'Not Applicable'} onChange={e => setF({ ...f, joiningStatus: e.target.value })}>
+                {['Not Applicable', 'Pending Joining', 'Joined', 'Declined'].map(v => <option key={v}>{v}</option>)}
+              </select>
+            </label>
+          </div>
+          <label style={{ marginTop: '12px' }}>Notes & Remarks
+            <textarea rows="3" value={f.notes || ''} onChange={e => setF({ ...f, notes: e.target.value })} />
+          </label>
+          <div className="modalActions">
+            <button type="button" className="actionBtn" onClick={onClose}>Cancel</button>
+            <button type="submit" className="primary" disabled={saving}>
+              {saving ? 'Saving...' : 'Update Interview'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -654,7 +767,7 @@ function ProposalPanel({ props, reload }) {
   );
 }
 
-function JoinerPanel({ items, onManageDocs }) {
+function JoinerPanel({ items, onManageDocs, onEditInterview }) {
   const [filter, setFilter] = useState('All');
   const joiners = useMemo(() => {
     return items.filter(x => {
@@ -703,9 +816,16 @@ function JoinerPanel({ items, onManageDocs }) {
               <small style={{ color: '#475569' }}>
                 📁 Uploaded Documents: <b>{(j.documents || []).length} file(s)</b>
               </small>
-              <button className="primary" onClick={() => onManageDocs(j)}>
-                <Upload size={16} /> Manage Joiner Documents
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {onEditInterview && (
+                  <button className="actionBtn" onClick={() => onEditInterview(j)}>
+                    <Edit size={15} /> Edit Candidate
+                  </button>
+                )}
+                <button className="primary" onClick={() => onManageDocs(j)}>
+                  <Upload size={16} /> Manage Joiner Documents
+                </button>
+              </div>
             </div>
           </div>
         ))
