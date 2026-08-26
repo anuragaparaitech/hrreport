@@ -35,21 +35,48 @@ app.use(async (req, res, next) => {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const uploadsDir = process.env.VERCEL ? path.join('/tmp', 'uploads', 'meeting-proofs') : path.join(__dirname, 'uploads', 'meeting-proofs');
-try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch(err) { console.warn('Upload directory warning:', err.message); }
-app.use('/uploads', express.static(uploadsDir));
+const uploadsBaseDir = process.env.VERCEL ? path.join('/tmp', 'uploads') : path.join(__dirname, 'uploads');
+const proofsDir = path.join(uploadsBaseDir, 'meeting-proofs');
+const docsDir = path.join(uploadsBaseDir, 'joiner-docs');
+try { 
+  fs.mkdirSync(proofsDir, { recursive: true });
+  fs.mkdirSync(docsDir, { recursive: true });
+} catch(err) { 
+  console.warn('Upload directory warning:', err.message); 
+}
+app.use('/uploads', express.static(uploadsBaseDir));
 
-const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, uploadsDir),
+const proofStorage = multer.diskStorage({
+  destination: (_, __, cb) => cb(null, proofsDir),
   filename: (_, file, cb) => {
     const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
     cb(null, `${Date.now()}-${Math.round(Math.random()*1e9)}-${safe}`);
   }
 });
-const upload = multer({
-  storage,
+const uploadProof = multer({
+  storage: proofStorage,
   limits: { fileSize: 8 * 1024 * 1024, files: 5 },
   fileFilter: (_, file, cb) => file.mimetype.startsWith('image/') ? cb(null, true) : cb(new Error('Only image files are allowed'))
+});
+
+const docStorage = multer.diskStorage({
+  destination: (_, __, cb) => cb(null, docsDir),
+  filename: (_, file, cb) => {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    cb(null, `${Date.now()}-${Math.round(Math.random()*1e9)}-${safe}`);
+  }
+});
+const uploadDoc = multer({
+  storage: docStorage,
+  limits: { fileSize: 15 * 1024 * 1024, files: 5 }
+});
+
+const documentSchema = new mongoose.Schema({
+  title: String,
+  documentType: { type: String, default: 'Other' },
+  fileUrl: String,
+  originalName: String,
+  uploadedAt: { type: Date, default: Date.now }
 });
 
 const interviewSchema = new mongoose.Schema({
@@ -71,6 +98,7 @@ const interviewSchema = new mongoose.Schema({
   proofNote: String,
   proofUploadedAt: Date,
   followUpDate: Date,
+  documents: [documentSchema],
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -100,6 +128,40 @@ const Proposal = mongoose.model('Proposal', proposalSchema);
 
 app.get('/api/health', (req,res)=>res.json({ok:true, service:'HR Interview CRM'}));
 
+// Auth Login API
+app.post('/api/auth/login', async (req, res) => {
+  const { username, email, password } = req.body || {};
+  const identifier = (username || email || '').trim().toLowerCase();
+  
+  // Accept admin credentials or any HR user credentials
+  if ((identifier === 'admin' || identifier === 'admin@aparaitech.com' || identifier === 'hr@aparaitech.com' || identifier === 'hr') && (password === 'admin123' || password === 'hr123' || password === 'aparaitech123')) {
+    return res.json({
+      success: true,
+      token: 'jwt-auth-aparaitech-session-token',
+      user: {
+        name: identifier.includes('hr') ? 'HR Manager' : 'Admin Manager',
+        email: identifier.includes('@') ? identifier : `${identifier}@aparaitech.com`,
+        role: 'Administrator'
+      }
+    });
+  }
+  
+  // Also allow generic login for demo ease if user enters valid non-empty login
+  if (identifier && password && password.length >= 4) {
+    return res.json({
+      success: true,
+      token: `user-token-${Date.now()}`,
+      user: {
+        name: identifier.split('@')[0].toUpperCase(),
+        email: identifier.includes('@') ? identifier : `${identifier}@aparaitech.com`,
+        role: 'Recruiter'
+      }
+    });
+  }
+
+  return res.status(401).json({ success: false, message: 'Invalid email/username or password. Use admin@aparaitech.com / admin123' });
+});
+
 app.get('/api/interviews', async (req,res)=>{
   const { status, role, from, to, search } = req.query;
   const q = {};
@@ -116,7 +178,7 @@ app.post('/api/interviews', async (req,res)=>res.status(201).json(await Intervie
 app.put('/api/interviews/:id', async (req,res)=>res.json(await Interview.findByIdAndUpdate(req.params.id,req.body,{new:true,runValidators:true})));
 app.delete('/api/interviews/:id', async (req,res)=>{ await Interview.findByIdAndDelete(req.params.id); res.json({ok:true}); });
 
-app.post('/api/interviews/:id/meeting-proof', upload.array('photos', 5), async (req,res)=>{
+app.post('/api/interviews/:id/meeting-proof', uploadProof.array('photos', 5), async (req,res)=>{
   const interview = await Interview.findById(req.params.id);
   if(!interview) return res.status(404).json({message:'Interview not found'});
   const urls = (req.files || []).map(f => `/uploads/meeting-proofs/${f.filename}`);
@@ -134,11 +196,59 @@ app.delete('/api/interviews/:id/meeting-proof', async (req,res)=>{
   if(!interview) return res.status(404).json({message:'Interview not found'});
   interview.meetingProofPhotos = (interview.meetingProofPhotos || []).filter(x => x !== photo);
   if(photo && photo.startsWith('/uploads/')) {
-    const localPath = path.join(__dirname, photo.replace(/^\/uploads\//,''));
+    const relativePath = photo.replace(/^\/uploads\//,'');
+    const localPath = path.join(uploadsBaseDir, relativePath);
     if(fs.existsSync(localPath)) fs.unlinkSync(localPath);
   }
   await interview.save();
   res.json(interview);
+});
+
+// Joiner Document Upload Endpoints
+app.post('/api/interviews/:id/documents', uploadDoc.single('documentFile'), async (req, res) => {
+  try {
+    const interview = await Interview.findById(req.params.id);
+    if (!interview) return res.status(404).json({ message: 'Candidate not found' });
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+    const fileUrl = `/uploads/joiner-docs/${req.file.filename}`;
+    const newDoc = {
+      title: req.body.title || req.file.originalname,
+      documentType: req.body.documentType || 'Other',
+      fileUrl,
+      originalName: req.file.originalname,
+      uploadedAt: new Date()
+    };
+
+    interview.documents.push(newDoc);
+    await interview.save();
+    res.status(201).json(interview);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/interviews/:id/documents/:docId', async (req, res) => {
+  try {
+    const interview = await Interview.findById(req.params.id);
+    if (!interview) return res.status(404).json({ message: 'Candidate not found' });
+    
+    const docIndex = interview.documents.findIndex(d => d._id.toString() === req.params.docId);
+    if (docIndex === -1) return res.status(404).json({ message: 'Document not found' });
+
+    const doc = interview.documents[docIndex];
+    if (doc.fileUrl && doc.fileUrl.startsWith('/uploads/')) {
+      const relativePath = doc.fileUrl.replace(/^\/uploads\//, '');
+      const localPath = path.join(uploadsBaseDir, relativePath);
+      if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+    }
+
+    interview.documents.splice(docIndex, 1);
+    await interview.save();
+    res.json(interview);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 app.get('/api/proposals', async (req,res)=>res.json(await Proposal.find().sort({createdAt:-1})));
@@ -177,3 +287,4 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
 }
 
 export default app;
+
