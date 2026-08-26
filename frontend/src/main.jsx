@@ -13,7 +13,7 @@ const SERVER = API.replace(/\/api\/?$/, '');
 const emptyInterview = {
   candidateName: '', phone: '', email: '', college: '', role: 'Software Developer', source: 'Direct',
   interviewDate: '', interviewTime: '', googleMeetLink: '', interviewer: '', round: 'HR Round',
-  status: 'Scheduled', joiningStatus: 'Not Applicable', joiningDate: '', salaryOrStipend: '', notes: '', followUpDate: ''
+  status: 'Scheduled', joiningStatus: 'Not Applicable', joiningDate: '2026-06-02', salaryOrStipend: '', notes: '', followUpDate: ''
 };
 
 function LoginScreen({ onLogin }) {

@@ -181,6 +181,7 @@ async function run() {
           ...student,
           status: 'Selected',
           joiningStatus: 'Pending Joining',
+          joiningDate: new Date('2026-06-02'),
           interviewDate: new Date(),
           round: 'Final Round',
           source: 'Campus Placement'
