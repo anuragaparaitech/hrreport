@@ -281,8 +281,9 @@ app.get('/api/reports/daily', async (req,res)=>{
 const port = process.env.PORT || 5000;
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-  connectDB().then(() => {
-    app.listen(port, () => console.log(`HR Interview CRM backend running on http://localhost:${port}`));
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`HR Interview CRM backend running on http://0.0.0.0:${port}`);
+    connectDB();
   });
 }
 
