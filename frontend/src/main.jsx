@@ -24,6 +24,46 @@ const emptyInterview = {
   status: 'Scheduled', joiningStatus: 'Not Applicable', joiningDate: '2026-06-02', salaryOrStipend: '', notes: '', followUpDate: ''
 };
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Uncaught runtime error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '50px 20px', textAlign: 'center', fontFamily: 'system-ui, sans-serif' }}>
+          <div style={{ width: '60px', height: '60px', background: '#4f46e5', color: '#fff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontWeight: '800', fontSize: '24px' }}>HR</div>
+          <h2>HR Interview CRM</h2>
+          <p style={{ color: '#64748b', maxWidth: '400px', margin: '0 auto 20px' }}>
+            A temporary browser session error occurred. Click below to reset your session and reload.
+          </p>
+          <button
+            style={{ padding: '12px 20px', background: '#4f46e5', color: '#ffffff', border: 0, borderRadius: '10px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}
+            onClick={() => {
+              try { localStorage.clear(); } catch(e) {}
+              window.location.reload();
+            }}
+          >
+            Reset Session & Reload Web App
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -98,10 +138,20 @@ function LoginScreen({ onLogin }) {
 
 function App() {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('crm_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('crm_user');
+      return (saved && saved !== 'undefined') ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
   });
-  const [token, setToken] = useState(() => localStorage.getItem('crm_token') || '');
+  const [token, setToken] = useState(() => {
+    try {
+      return localStorage.getItem('crm_token') || '';
+    } catch(e) {
+      return '';
+    }
+  });
 
   const [tab, setTab] = useState('dashboard');
   const [dash, setDash] = useState({});
@@ -120,9 +170,13 @@ function App() {
 
   // PWA & Notification state
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [notifPermission, setNotifPermission] = useState(() =>
-    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
-  );
+  const [notifPermission, setNotifPermission] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && 'Notification' in window && Notification ? Notification.permission : 'default';
+    } catch (e) {
+      return 'default';
+    }
+  });
   const [showNotifMenu, setShowNotifMenu] = useState(false);
 
   // Register Service Worker & PWA beforeinstallprompt
@@ -151,10 +205,14 @@ function App() {
 
   const requestNotifPermission = async () => {
     if (!('Notification' in window)) return alert('Desktop notifications are not supported by your browser.');
-    const perm = await Notification.requestPermission();
-    setNotifPermission(perm);
-    if (perm === 'granted') {
-      sendDesktopNotification('Notifications Active 🔔', 'HR Interview CRM will now send you alerts for interviews, joining dates, and follow-ups.');
+    try {
+      const perm = await Notification.requestPermission();
+      setNotifPermission(perm);
+      if (perm === 'granted') {
+        sendDesktopNotification('Notifications Active 🔔', 'HR Interview CRM will now send you alerts for interviews, joining dates, and follow-ups.');
+      }
+    } catch (e) {
+      console.warn('Notification permission error:', e);
     }
   };
 
@@ -173,37 +231,44 @@ function App() {
   const handleLogin = (loggedUser, authToken) => {
     setUser(loggedUser);
     setToken(authToken);
-    localStorage.setItem('crm_user', JSON.stringify(loggedUser));
-    localStorage.setItem('crm_token', authToken);
+    try {
+      localStorage.setItem('crm_user', JSON.stringify(loggedUser));
+      localStorage.setItem('crm_token', authToken);
+    } catch(e) {}
   };
 
   const handleLogout = () => {
     setUser(null);
     setToken('');
-    localStorage.removeItem('crm_user');
-    localStorage.removeItem('crm_token');
+    try {
+      localStorage.removeItem('crm_user');
+      localStorage.removeItem('crm_token');
+    } catch(e) {}
   };
 
   const load = async () => {
     try {
       const [d, i, p] = await Promise.all([
-        fetch(API + '/dashboard').then(r => r.json()),
-        fetch(API + '/interviews').then(r => r.json()),
-        fetch(API + '/proposals').then(r => r.json())
+        fetch(API + '/dashboard').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(API + '/interviews').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(API + '/proposals').then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
-      setDash(d);
-      setItems(i);
-      setProps(p);
+      setDash(d || {});
+      const interviewList = Array.isArray(i) ? i : [];
+      const proposalList = Array.isArray(p) ? p : [];
+      setItems(interviewList);
+      setProps(proposalList);
+
       if (selectedCandidateForDocs) {
-        const updatedDocCand = i.find(x => x._id === selectedCandidateForDocs._id);
+        const updatedDocCand = interviewList.find(x => x._id === selectedCandidateForDocs._id);
         if (updatedDocCand) setSelectedCandidateForDocs(updatedDocCand);
       }
       if (viewingCandidate) {
-        const updatedViewCand = i.find(x => x._id === viewingCandidate._id);
+        const updatedViewCand = interviewList.find(x => x._id === viewingCandidate._id);
         if (updatedViewCand) setViewingCandidate(updatedViewCand);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Data load exception:', e);
     }
   };
 
@@ -217,14 +282,14 @@ function App() {
     const result = { interviews: [], joinings: [], followups: [] };
 
     // 1. Interviews Today
-    items.forEach(x => {
+    (items || []).forEach(x => {
       if (x.interviewDate && new Date(x.interviewDate).toDateString() === todayStr) {
         result.interviews.push(x);
       }
     });
 
     // 2. Joining Reminders (Pending Joining / Joined with joiningDate today or soon)
-    items.forEach(x => {
+    (items || []).forEach(x => {
       if ((x.joiningStatus === 'Pending Joining' || x.joiningStatus === 'Joined') && x.joiningDate) {
         const jDate = new Date(x.joiningDate);
         const diffDays = Math.ceil((jDate - new Date()) / (1000 * 60 * 60 * 24));
@@ -235,7 +300,7 @@ function App() {
     });
 
     // 3. Follow-up Reminders
-    items.forEach(x => {
+    (items || []).forEach(x => {
       if (x.followUpDate) {
         const fDate = new Date(x.followUpDate);
         if (fDate <= new Date()) {
@@ -243,7 +308,7 @@ function App() {
         }
       }
     });
-    props.forEach(p => {
+    (props || []).forEach(p => {
       if (p.followUpDate) {
         const fDate = new Date(p.followUpDate);
         if (fDate <= new Date()) {
@@ -268,7 +333,7 @@ function App() {
     }
   }, [totalAlerts, notifPermission]);
 
-  const filtered = useMemo(() => items.filter(x =>
+  const filtered = useMemo(() => (items || []).filter(x =>
     [x.candidateName, x.phone, x.email, x.college, x.role].join(' ').toLowerCase().includes(search.toLowerCase())
   ), [items, search]);
 
@@ -744,9 +809,11 @@ function StudentProfileModal({ candidate, onClose, onEdit, onManageDocs, reload 
 
   const copyMeetLink = () => {
     if (candidate.googleMeetLink) {
-      navigator.clipboard.writeText(candidate.googleMeetLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        navigator.clipboard.writeText(candidate.googleMeetLink);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (e) {}
     }
   };
 
@@ -1204,7 +1271,7 @@ function ProposalPanel({ props, reload }) {
 function JoinerPanel({ items, onManageDocs, onEditInterview, onViewCandidate }) {
   const [filter, setFilter] = useState('All');
   const joiners = useMemo(() => {
-    return items.filter(x => {
+    return (items || []).filter(x => {
       if (filter === 'Pending Joining') return x.joiningStatus === 'Pending Joining';
       if (filter === 'Joined') return x.joiningStatus === 'Joined';
       return x.joiningStatus === 'Pending Joining' || x.joiningStatus === 'Joined';
@@ -1403,7 +1470,7 @@ function DocumentModal({ candidate, onClose, reload }) {
 
 function ReportPanel({ items, onViewCandidate }) {
   const today = new Date().toDateString();
-  const rows = items.filter(x => new Date(x.interviewDate).toDateString() === today);
+  const rows = (items || []).filter(x => new Date(x.interviewDate).toDateString() === today);
   const count = s => rows.filter(x => x.status === s).length;
   return (
     <div className="panel">
@@ -1442,4 +1509,8 @@ function ReportPanel({ items, onViewCandidate }) {
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
