@@ -4,7 +4,7 @@ import {
   CalendarDays, Users, UserCheck, Clock, BriefcaseBusiness, Link2, Plus, Search,
   Building2, FileText, CheckCircle2, XCircle, RefreshCcw, Trash2, Camera, ImagePlus,
   ExternalLink, Edit, Lock, LogOut, Upload, File, Eye, Download, ShieldCheck, User, X,
-  Bell, Smartphone, AlertCircle, Calendar, Menu, Layers
+  Bell, Smartphone, AlertCircle, Calendar, Menu, Layers, Video, Copy
 } from 'lucide-react';
 import './styles.css';
 
@@ -109,8 +109,11 @@ function App() {
   const [props, setProps] = useState([]);
   const [form, setForm] = useState(emptyInterview);
   const [search, setSearch] = useState('');
+  
+  // Selection modals state
   const [selectedCandidateForDocs, setSelectedCandidateForDocs] = useState(null);
   const [editingInterview, setEditingInterview] = useState(null);
+  const [viewingCandidate, setViewingCandidate] = useState(null);
 
   // Mobile menu & drawer state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -194,6 +197,10 @@ function App() {
       if (selectedCandidateForDocs) {
         const updatedDocCand = i.find(x => x._id === selectedCandidateForDocs._id);
         if (updatedDocCand) setSelectedCandidateForDocs(updatedDocCand);
+      }
+      if (viewingCandidate) {
+        const updatedViewCand = i.find(x => x._id === viewingCandidate._id);
+        if (updatedViewCand) setViewingCandidate(updatedViewCand);
       }
     } catch (e) {
       console.error(e);
@@ -428,7 +435,7 @@ function App() {
                           <div className="notifCategory">📅 Today's Interviews ({alerts.interviews.length})</div>
                           <div className="notifList">
                             {alerts.interviews.map(i => (
-                              <div className="notifCard interview" key={i._id} onClick={() => { setTab('interviews'); setShowNotifMenu(false); }}>
+                              <div className="notifCard interview" key={i._id} onClick={() => { setViewingCandidate(i); setShowNotifMenu(false); }}>
                                 <div className="notifCardContent">
                                   <b>{i.candidateName}</b>
                                   <small>{i.role} • {i.interviewTime || 'Scheduled Today'}</small>
@@ -444,7 +451,7 @@ function App() {
                           <div className="notifCategory">💼 Candidate Joining Reminders ({alerts.joinings.length})</div>
                           <div className="notifList">
                             {alerts.joinings.map(j => (
-                              <div className="notifCard joining" key={j._id} onClick={() => { setTab('joiners'); setShowNotifMenu(false); }}>
+                              <div className="notifCard joining" key={j._id} onClick={() => { setViewingCandidate(j); setShowNotifMenu(false); }}>
                                 <div className="notifCardContent">
                                   <b>{j.candidateName}</b>
                                   <small>{j.role} • Joining Date: {new Date(j.joiningDate).toLocaleDateString()} {j.diffDays === 0 ? '(TODAY)' : `(in ${j.diffDays} days)`}</small>
@@ -460,7 +467,11 @@ function App() {
                           <div className="notifCategory">🔔 Follow-ups Due ({alerts.followups.length})</div>
                           <div className="notifList">
                             {alerts.followups.map((f, idx) => (
-                              <div className="notifCard followup" key={idx} onClick={() => { setTab(f.type === 'Proposal' ? 'proposals' : 'interviews'); setShowNotifMenu(false); }}>
+                              <div className="notifCard followup" key={idx} onClick={() => {
+                                if (f.type === 'Candidate') setViewingCandidate(f.target);
+                                else setTab('proposals');
+                                setShowNotifMenu(false);
+                              }}>
                                 <div className="notifCardContent">
                                   <b>{f.title}</b>
                                   <small>{f.type} Follow-up Action Required</small>
@@ -500,7 +511,7 @@ function App() {
                 {(dash.upcoming || []).map(x => (
                   <div className="row" key={x._id}>
                     <div>
-                      <b>{x.candidateName}</b>
+                      <b className="candidateLink" onClick={() => setViewingCandidate(x)}>{x.candidateName}</b>
                       <small>{x.role} • {new Date(x.interviewDate).toLocaleDateString()} {x.interviewTime}</small>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -508,8 +519,10 @@ function App() {
                         <Edit size={14} />
                       </button>
                       {x.googleMeetLink ? (
-                        <a href={x.googleMeetLink} target="_blank" rel="noreferrer"><Link2 size={16} /> Meet</a>
-                      ) : <span className="muted">No link</span>}
+                        <a href={x.googleMeetLink} target="_blank" rel="noreferrer" className="actionBtn primary" style={{ padding: '6px 10px' }}>
+                          <Video size={14} /> Join Meet
+                        </a>
+                      ) : <button className="actionBtn" onClick={() => openEditInterview(x)}>+ Meet</button>}
                     </div>
                   </div>
                 ))}
@@ -542,7 +555,7 @@ function App() {
                     <th>Candidate</th>
                     <th>Role</th>
                     <th>Interview</th>
-                    <th>Meet</th>
+                    <th>Scheduled Meet</th>
                     <th>Status</th>
                     <th>Joining</th>
                     <th>Meeting Proof</th>
@@ -553,10 +566,25 @@ function App() {
                 <tbody>
                   {filtered.map(x => (
                     <tr key={x._id}>
-                      <td><b>{x.candidateName}</b><small>{x.phone}<br />{x.college}</small></td>
+                      <td>
+                        <b className="candidateLink" onClick={() => setViewingCandidate(x)} title="Click to view full student profile">
+                          {x.candidateName}
+                        </b>
+                        <small>{x.phone}<br />{x.college}</small>
+                      </td>
                       <td>{x.role}<small>{x.round}</small></td>
                       <td>{new Date(x.interviewDate).toLocaleDateString()}<small>{x.interviewTime}</small></td>
-                      <td>{x.googleMeetLink ? <a href={x.googleMeetLink} target="_blank" rel="noreferrer">Open Meet</a> : '-'}</td>
+                      <td>
+                        {x.googleMeetLink ? (
+                          <a href={x.googleMeetLink} target="_blank" rel="noreferrer" className="actionBtn primary" style={{ fontSize: '12px', padding: '6px 10px' }}>
+                            <Video size={14} /> Join Meet
+                          </a>
+                        ) : (
+                          <button className="actionBtn" onClick={() => openEditInterview(x)}>
+                            + Add Link
+                          </button>
+                        )}
+                      </td>
                       <td>
                         <select value={x.status} onChange={e => update(x._id, { status: e.target.value })}>
                           {['Scheduled', 'Completed', 'Selected', 'Rejected', 'No Show', 'On Hold', 'Pending'].map(v => <option key={v}>{v}</option>)}
@@ -576,8 +604,11 @@ function App() {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '6px' }}>
+                          <button className="actionBtn" onClick={() => setViewingCandidate(x)} title="View Student Data">
+                            <Eye size={14} /> View
+                          </button>
                           <button className="actionBtn" onClick={() => openEditInterview(x)} title="Edit Interview">
-                            <Edit size={14} /> Edit
+                            <Edit size={14} />
                           </button>
                           <button className="icon danger" onClick={() => del(x._id)} title="Delete Interview">
                             <Trash2 size={14} />
@@ -592,7 +623,7 @@ function App() {
           </div>
         )}
 
-        {tab === 'joiners' && <JoinerPanel items={items} onManageDocs={setSelectedCandidateForDocs} onEditInterview={openEditInterview} />}
+        {tab === 'joiners' && <JoinerPanel items={items} onManageDocs={setSelectedCandidateForDocs} onEditInterview={openEditInterview} onViewCandidate={setViewingCandidate} />}
 
         {tab === 'new' && (
           <form className="panel form" onSubmit={addInterview}>
@@ -644,7 +675,17 @@ function App() {
         )}
 
         {tab === 'proposals' && <ProposalPanel props={props} reload={load} />}
-        {tab === 'reports' && <ReportPanel items={items} />}
+        {tab === 'reports' && <ReportPanel items={items} onViewCandidate={setViewingCandidate} />}
+
+        {viewingCandidate && (
+          <StudentProfileModal
+            candidate={viewingCandidate}
+            onClose={() => setViewingCandidate(null)}
+            onEdit={openEditInterview}
+            onManageDocs={setSelectedCandidateForDocs}
+            reload={load}
+          />
+        )}
 
         {selectedCandidateForDocs && (
           <DocumentModal candidate={selectedCandidateForDocs} onClose={() => setSelectedCandidateForDocs(null)} reload={load} />
@@ -693,6 +734,120 @@ function App() {
           <Building2 size={20} />
           <span>Proposals</span>
         </button>
+      </div>
+    </div>
+  );
+}
+
+function StudentProfileModal({ candidate, onClose, onEdit, onManageDocs, reload }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyMeetLink = () => {
+    if (candidate.googleMeetLink) {
+      navigator.clipboard.writeText(candidate.googleMeetLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="modalOverlay">
+      <div className="modal" style={{ maxWidth: '820px' }}>
+        <div className="modalHeader">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0 }}>{candidate.candidateName}</h3>
+              <span className="badge info">{candidate.role}</span>
+              <span className={`badge ${candidate.status === 'Selected' ? 'success' : candidate.status === 'Rejected' ? 'neutral' : 'warning'}`}>
+                {candidate.status}
+              </span>
+            </div>
+            <small style={{ color: '#64748b' }}>{candidate.college} • Round: {candidate.round || 'HR Round'}</small>
+          </div>
+          <button className="closeBtn" onClick={onClose}><X size={20} /></button>
+        </div>
+
+        {/* Scheduled Google Meet Direct Join Box */}
+        <div className="meetBox">
+          <div className="meetInfo">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Video size={20} color="#4338ca" />
+              <b>Scheduled Google Meet</b>
+            </div>
+            <small>{candidate.googleMeetLink || 'No direct Meet link added yet.'}</small>
+          </div>
+          <div className="meetActions">
+            {candidate.googleMeetLink ? (
+              <>
+                <button className="actionBtn" onClick={copyMeetLink} title="Copy Google Meet Link">
+                  <Copy size={15} /> {copied ? 'Copied!' : 'Copy Link'}
+                </button>
+                <a href={candidate.googleMeetLink} target="_blank" rel="noreferrer" className="meetBtn">
+                  <Video size={16} /> Join Scheduled Meet
+                </a>
+              </>
+            ) : (
+              <button className="actionBtn primary" onClick={() => { onClose(); onEdit(candidate); }}>
+                + Add Google Meet Link
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Student & Contact Info */}
+        <div className="profileSection">
+          <h4><User size={16} /> Student Contact & College Details</h4>
+          <div className="profileGrid">
+            <div className="profileItem"><span>Full Name</span><b>{candidate.candidateName}</b></div>
+            <div className="profileItem"><span>Phone Number</span><b>{candidate.phone ? <a href={`tel:${candidate.phone}`}>📞 {candidate.phone}</a> : '-'}</b></div>
+            <div className="profileItem"><span>Email Address</span><b>{candidate.email ? <a href={`mailto:${candidate.email}`}>✉️ {candidate.email}</a> : '-'}</b></div>
+            <div className="profileItem"><span>College / Institute</span><b>{candidate.college || '-'}</b></div>
+            <div className="profileItem"><span>Role Offered</span><b>{candidate.role}</b></div>
+            <div className="profileItem"><span>Sourcing Channel</span><b>{candidate.source || 'Direct'}</b></div>
+          </div>
+        </div>
+
+        {/* Interview Schedule Details */}
+        <div className="profileSection">
+          <h4><Calendar size={16} /> Interview Schedule & Status</h4>
+          <div className="profileGrid">
+            <div className="profileItem"><span>Interview Date</span><b>{candidate.interviewDate ? new Date(candidate.interviewDate).toLocaleDateString() : '-'}</b></div>
+            <div className="profileItem"><span>Interview Time</span><b>{candidate.interviewTime || 'TBD'}</b></div>
+            <div className="profileItem"><span>Interviewer</span><b>{candidate.interviewer || 'HR Team'}</b></div>
+            <div className="profileItem"><span>Interview Round</span><b>{candidate.round || 'HR Round'}</b></div>
+            <div className="profileItem"><span>Interview Status</span><b>{candidate.status}</b></div>
+            <div className="profileItem"><span>Follow-up Date</span><b>{candidate.followUpDate ? new Date(candidate.followUpDate).toLocaleDateString() : '-'}</b></div>
+          </div>
+        </div>
+
+        {/* Joining & Documents Info */}
+        <div className="profileSection">
+          <h4><BriefcaseBusiness size={16} /> Joining & Onboarding Details</h4>
+          <div className="profileGrid">
+            <div className="profileItem"><span>Joining Status</span><b>{candidate.joiningStatus || 'Not Applicable'}</b></div>
+            <div className="profileItem"><span>Joining Date</span><b>{candidate.joiningDate ? new Date(candidate.joiningDate).toLocaleDateString() : 'TBD'}</b></div>
+            <div className="profileItem"><span>Salary / Stipend</span><b>{candidate.salaryOrStipend || 'Not set'}</b></div>
+            <div className="profileItem"><span>Uploaded Documents</span><b>{(candidate.documents || []).length} file(s)</b></div>
+            <div className="profileItem"><span>Meeting Proof Photos</span><b>{(candidate.meetingProofPhotos || []).length} photo(s)</b></div>
+          </div>
+        </div>
+
+        {candidate.notes && (
+          <div className="profileSection">
+            <h4>Notes & Remarks</h4>
+            <p style={{ margin: 0, fontSize: '13px', color: '#334155', whiteSpace: 'pre-wrap' }}>{candidate.notes}</p>
+          </div>
+        )}
+
+        <div className="modalActions">
+          <button className="actionBtn" onClick={() => { onClose(); onEdit(candidate); }}>
+            <Edit size={14} /> Edit Candidate Data
+          </button>
+          <button className="actionBtn primary" onClick={() => { onClose(); onManageDocs(candidate); }}>
+            <FileText size={14} /> Manage Documents ({(candidate.documents || []).length})
+          </button>
+          <button className="actionBtn" onClick={onClose}>Close</button>
+        </div>
       </div>
     </div>
   );
@@ -1046,7 +1201,7 @@ function ProposalPanel({ props, reload }) {
   );
 }
 
-function JoinerPanel({ items, onManageDocs, onEditInterview }) {
+function JoinerPanel({ items, onManageDocs, onEditInterview, onViewCandidate }) {
   const [filter, setFilter] = useState('All');
   const joiners = useMemo(() => {
     return items.filter(x => {
@@ -1076,7 +1231,7 @@ function JoinerPanel({ items, onManageDocs, onEditInterview }) {
           <div className="joinerCard" key={j._id}>
             <div className="joinerHeader">
               <div className="joinerTitle">
-                <b>{j.candidateName}</b>
+                <b className="candidateLink" onClick={() => onViewCandidate(j)}>{j.candidateName}</b>
                 <small>{j.role} • {j.college}</small>
               </div>
               <span className={`badge ${j.joiningStatus === 'Joined' ? 'success' : 'warning'}`}>
@@ -1091,11 +1246,14 @@ function JoinerPanel({ items, onManageDocs, onEditInterview }) {
               <div><span>Stipend / CTC</span><b>{j.salaryOrStipend || 'Not set'}</b></div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
               <small style={{ color: '#475569' }}>
                 📁 Uploaded Documents: <b>{(j.documents || []).length} file(s)</b>
               </small>
               <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="actionBtn" onClick={() => onViewCandidate(j)}>
+                  <Eye size={15} /> View Profile
+                </button>
                 {onEditInterview && (
                   <button className="actionBtn" onClick={() => onEditInterview(j)}>
                     <Edit size={15} /> Edit Candidate
@@ -1243,7 +1401,7 @@ function DocumentModal({ candidate, onClose, reload }) {
   );
 }
 
-function ReportPanel({ items }) {
+function ReportPanel({ items, onViewCandidate }) {
   const today = new Date().toDateString();
   const rows = items.filter(x => new Date(x.interviewDate).toDateString() === today);
   const count = s => rows.filter(x => x.status === s).length;
@@ -1270,7 +1428,7 @@ function ReportPanel({ items }) {
         <tbody>
           {rows.map(x => (
             <tr key={x._id}>
-              <td>{x.candidateName}</td>
+              <td><b className="candidateLink" onClick={() => onViewCandidate(x)}>{x.candidateName}</b></td>
               <td>{x.role}</td>
               <td>{x.interviewTime}</td>
               <td>{x.status}</td>
