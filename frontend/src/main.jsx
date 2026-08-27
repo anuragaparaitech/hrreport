@@ -4,7 +4,7 @@ import {
   CalendarDays, Users, UserCheck, Clock, BriefcaseBusiness, Link2, Plus, Search,
   Building2, FileText, CheckCircle2, XCircle, RefreshCcw, Trash2, Camera, ImagePlus,
   ExternalLink, Edit, Lock, LogOut, Upload, File, Eye, Download, ShieldCheck, User, X,
-  Bell, Smartphone, AlertCircle, Calendar
+  Bell, Smartphone, AlertCircle, Calendar, Menu, Layers
 } from 'lucide-react';
 import './styles.css';
 
@@ -105,6 +105,9 @@ function App() {
   const [selectedCandidateForDocs, setSelectedCandidateForDocs] = useState(null);
   const [editingInterview, setEditingInterview] = useState(null);
 
+  // Mobile menu & drawer state
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   // PWA & Notification state
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [notifPermission, setNotifPermission] = useState(() =>
@@ -128,7 +131,7 @@ function App() {
 
   const installPWA = async () => {
     if (!deferredPrompt) {
-      alert('To install HR CRM, open Chrome options (⋮ menu) and click "Add to Home Screen" or "Install App".');
+      alert('To install HR CRM on your phone, tap Chrome menu (⋮) and select "Add to Home Screen" or "Install App".');
       return;
     }
     deferredPrompt.prompt();
@@ -309,7 +312,32 @@ function App() {
 
   return (
     <div className="app">
-      <aside>
+      {/* Mobile Sticky Header */}
+      <div className="mobileTopBar">
+        <div className="mobileBrand">
+          <div className="logo">HR</div>
+          <div>
+            <b>HR CRM</b>
+            <small>Recruitment</small>
+          </div>
+        </div>
+        <div className="mobileActions">
+          <div className="notifWrapper">
+            <button className="notifBell" onClick={() => setShowNotifMenu(!showNotifMenu)}>
+              <Bell size={18} />
+              {totalAlerts > 0 && <span className="notifBadge">{totalAlerts}</span>}
+            </button>
+          </div>
+          <button className="menuBtn" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+      </div>
+
+      {mobileMenuOpen && <div className="mobileBackdrop" onClick={() => setMobileMenuOpen(false)} />}
+
+      {/* Sidebar Navigation */}
+      <aside className={mobileMenuOpen ? 'mobileOpen' : ''}>
         <div className="brand">
           <div className="logo">HR</div>
           <div><b>Interview CRM</b><small>Recruitment Center</small></div>
@@ -322,7 +350,13 @@ function App() {
           ['proposals', 'College Proposals'],
           ['reports', 'Daily Reports']
         ].map(([k, l]) => (
-          <button className={tab === k ? 'active' : ''} onClick={() => setTab(k)} key={k}>{l}</button>
+          <button
+            className={tab === k ? 'active' : ''}
+            onClick={() => { setTab(k); setMobileMenuOpen(false); }}
+            key={k}
+          >
+            {l}
+          </button>
         ))}
 
         <div style={{ marginTop: '20px', padding: '0 4px' }}>
@@ -344,6 +378,7 @@ function App() {
         </div>
       </aside>
 
+      {/* Main Container */}
       <main>
         <header>
           <div>
@@ -612,6 +647,46 @@ function App() {
           <EditInterviewModal interview={editingInterview} onClose={() => setEditingInterview(null)} reload={load} />
         )}
       </main>
+
+      {/* Fixed Bottom Navigation Bar for Smartphone Screens */}
+      <div className="bottomNav">
+        <button
+          className={`bottomNavItem ${tab === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setTab('dashboard')}
+        >
+          <CalendarDays size={20} />
+          <span>Home</span>
+        </button>
+        <button
+          className={`bottomNavItem ${tab === 'interviews' ? 'active' : ''}`}
+          onClick={() => setTab('interviews')}
+        >
+          <Users size={20} />
+          <span>Pipeline</span>
+        </button>
+        <button
+          className="bottomNavItem addBtn"
+          onClick={() => setTab('new')}
+        >
+          <div className="addFab">
+            <Plus size={22} />
+          </div>
+        </button>
+        <button
+          className={`bottomNavItem ${tab === 'joiners' ? 'active' : ''}`}
+          onClick={() => setTab('joiners')}
+        >
+          <BriefcaseBusiness size={20} />
+          <span>Joiners</span>
+        </button>
+        <button
+          className={`bottomNavItem ${tab === 'proposals' ? 'active' : ''}`}
+          onClick={() => setTab('proposals')}
+        >
+          <Building2 size={20} />
+          <span>Proposals</span>
+        </button>
+      </div>
     </div>
   );
 }
