@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client';
 import {
   CalendarDays, Users, UserCheck, Clock, BriefcaseBusiness, Link2, Plus, Search,
   Building2, FileText, CheckCircle2, XCircle, RefreshCcw, Trash2, Camera, ImagePlus,
-  ExternalLink, Edit, Lock, LogOut, Upload, File, Eye, Download, ShieldCheck, User, X
+  ExternalLink, Edit, Lock, LogOut, Upload, File, Eye, Download, ShieldCheck, User, X,
+  Bell, Smartphone, AlertCircle, Calendar
 } from 'lucide-react';
 import './styles.css';
 
@@ -104,6 +105,58 @@ function App() {
   const [selectedCandidateForDocs, setSelectedCandidateForDocs] = useState(null);
   const [editingInterview, setEditingInterview] = useState(null);
 
+  // PWA & Notification state
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [notifPermission, setNotifPermission] = useState(() =>
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+  );
+  const [showNotifMenu, setShowNotifMenu] = useState(false);
+
+  // Register Service Worker & PWA beforeinstallprompt
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW registration failed:', err));
+    }
+
+    const promptHandler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', promptHandler);
+    return () => window.removeEventListener('beforeinstallprompt', promptHandler);
+  }, []);
+
+  const installPWA = async () => {
+    if (!deferredPrompt) {
+      alert('To install HR CRM, open Chrome options (⋮ menu) and click "Add to Home Screen" or "Install App".');
+      return;
+    }
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') setDeferredPrompt(null);
+  };
+
+  const requestNotifPermission = async () => {
+    if (!('Notification' in window)) return alert('Desktop notifications are not supported by your browser.');
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+    if (perm === 'granted') {
+      sendDesktopNotification('Notifications Active 🔔', 'HR Interview CRM will now send you alerts for interviews, joining dates, and follow-ups.');
+    }
+  };
+
+  const sendDesktopNotification = (title, body) => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(title, { body, icon: '/pwa-192.png', tag: title });
+      } catch (e) {
+        if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+          navigator.serviceWorker.ready.then(reg => reg.showNotification(title, { body, icon: '/pwa-192.png' }));
+        }
+      }
+    }
+  };
+
   const handleLogin = (loggedUser, authToken) => {
     setUser(loggedUser);
     setToken(authToken);
@@ -140,6 +193,63 @@ function App() {
   useEffect(() => {
     if (user) load();
   }, [user]);
+
+  // Compute Alerts (Interviews Today, Joining Dates, Follow-ups)
+  const alerts = useMemo(() => {
+    const todayStr = new Date().toDateString();
+    const result = { interviews: [], joinings: [], followups: [] };
+
+    // 1. Interviews Today
+    items.forEach(x => {
+      if (x.interviewDate && new Date(x.interviewDate).toDateString() === todayStr) {
+        result.interviews.push(x);
+      }
+    });
+
+    // 2. Joining Reminders (Pending Joining / Joined with joiningDate today or soon)
+    items.forEach(x => {
+      if ((x.joiningStatus === 'Pending Joining' || x.joiningStatus === 'Joined') && x.joiningDate) {
+        const jDate = new Date(x.joiningDate);
+        const diffDays = Math.ceil((jDate - new Date()) / (1000 * 60 * 60 * 24));
+        if (jDate.toDateString() === todayStr || (diffDays >= 0 && diffDays <= 5)) {
+          result.joinings.push({ ...x, diffDays });
+        }
+      }
+    });
+
+    // 3. Follow-up Reminders
+    items.forEach(x => {
+      if (x.followUpDate) {
+        const fDate = new Date(x.followUpDate);
+        if (fDate <= new Date()) {
+          result.followups.push({ title: `${x.candidateName} (${x.role})`, type: 'Candidate', target: x });
+        }
+      }
+    });
+    props.forEach(p => {
+      if (p.followUpDate) {
+        const fDate = new Date(p.followUpDate);
+        if (fDate <= new Date()) {
+          result.followups.push({ title: `${p.collegeName} Proposal`, type: 'Proposal', target: p });
+        }
+      }
+    });
+
+    return result;
+  }, [items, props]);
+
+  const totalAlerts = alerts.interviews.length + alerts.joinings.length + alerts.followups.length;
+
+  // Send desktop notification when alerts exist
+  useEffect(() => {
+    if (notifPermission === 'granted' && totalAlerts > 0) {
+      const msgParts = [];
+      if (alerts.interviews.length) msgParts.push(`${alerts.interviews.length} interview(s) today`);
+      if (alerts.joinings.length) msgParts.push(`${alerts.joinings.length} candidate joining reminder(s)`);
+      if (alerts.followups.length) msgParts.push(`${alerts.followups.length} follow-up(s) due`);
+      sendDesktopNotification('HR CRM Reminders 🔔', msgParts.join(', '));
+    }
+  }, [totalAlerts, notifPermission]);
 
   const filtered = useMemo(() => items.filter(x =>
     [x.candidateName, x.phone, x.email, x.college, x.role].join(' ').toLowerCase().includes(search.toLowerCase())
@@ -215,6 +325,12 @@ function App() {
           <button className={tab === k ? 'active' : ''} onClick={() => setTab(k)} key={k}>{l}</button>
         ))}
 
+        <div style={{ marginTop: '20px', padding: '0 4px' }}>
+          <button className="installBtn" style={{ width: '100%', justifyContent: 'center' }} onClick={installPWA}>
+            <Smartphone size={16} /> Install CRM App
+          </button>
+        </div>
+
         <div className="sidebarFooter">
           <div className="userInfo">
             <div className="userBadge">
@@ -240,7 +356,88 @@ function App() {
             </h1>
             <p>Manage interviews, Google Meet, college proposals & joiner documents.</p>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <div className="notifWrapper">
+              <button className="notifBell" onClick={() => setShowNotifMenu(!showNotifMenu)} title="Notifications & Reminders">
+                <Bell size={18} />
+                {totalAlerts > 0 && <span className="notifBadge">{totalAlerts}</span>}
+              </button>
+
+              {showNotifMenu && (
+                <div className="notifPopover">
+                  <div className="notifHeader">
+                    <h4>Notifications & Reminders</h4>
+                    <button className="closeBtn" onClick={() => setShowNotifMenu(false)}><X size={16} /></button>
+                  </div>
+
+                  {notifPermission !== 'granted' && (
+                    <div className="enableNotifBar">
+                      <span>Enable Desktop Notifications</span>
+                      <button className="actionBtn primary" onClick={requestNotifPermission}>Allow</button>
+                    </div>
+                  )}
+
+                  {totalAlerts === 0 ? (
+                    <p className="muted" style={{ margin: '10px 0', fontSize: '13px' }}>No active notifications or reminders today.</p>
+                  ) : (
+                    <>
+                      {alerts.interviews.length > 0 && (
+                        <div>
+                          <div className="notifCategory">📅 Today's Interviews ({alerts.interviews.length})</div>
+                          <div className="notifList">
+                            {alerts.interviews.map(i => (
+                              <div className="notifCard interview" key={i._id} onClick={() => { setTab('interviews'); setShowNotifMenu(false); }}>
+                                <div className="notifCardContent">
+                                  <b>{i.candidateName}</b>
+                                  <small>{i.role} • {i.interviewTime || 'Scheduled Today'}</small>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {alerts.joinings.length > 0 && (
+                        <div>
+                          <div className="notifCategory">💼 Candidate Joining Reminders ({alerts.joinings.length})</div>
+                          <div className="notifList">
+                            {alerts.joinings.map(j => (
+                              <div className="notifCard joining" key={j._id} onClick={() => { setTab('joiners'); setShowNotifMenu(false); }}>
+                                <div className="notifCardContent">
+                                  <b>{j.candidateName}</b>
+                                  <small>{j.role} • Joining Date: {new Date(j.joiningDate).toLocaleDateString()} {j.diffDays === 0 ? '(TODAY)' : `(in ${j.diffDays} days)`}</small>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {alerts.followups.length > 0 && (
+                        <div>
+                          <div className="notifCategory">🔔 Follow-ups Due ({alerts.followups.length})</div>
+                          <div className="notifList">
+                            {alerts.followups.map((f, idx) => (
+                              <div className="notifCard followup" key={idx} onClick={() => { setTab(f.type === 'Proposal' ? 'proposals' : 'interviews'); setShowNotifMenu(false); }}>
+                                <div className="notifCardContent">
+                                  <b>{f.title}</b>
+                                  <small>{f.type} Follow-up Action Required</small>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button className="installBtn" onClick={installPWA}>
+              <Smartphone size={17} /> Install App
+            </button>
+
             <button className="primary" onClick={() => setTab('new')}><Plus size={18} /> New Interview</button>
           </div>
         </header>
